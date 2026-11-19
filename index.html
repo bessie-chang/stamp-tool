@@ -8,6 +8,7 @@
     <style>
         :root {
             --primary: #4A6984;
+            --line-green: #06C755;
             --bg: #f4f6f9;
             --card: #ffffff;
             --text: #333333;
@@ -94,22 +95,29 @@
         }
         .download-btn:disabled { background: #adb5bd; box-shadow: none; cursor: not-allowed; }
         
-        /* 成品圖彈窗：100% 相容 iPhone Safari 與 LINE 瀏覽器長按存圖 */
+        /* 成品圖彈窗 */
         .result-modal {
-            display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.88);
+            display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.9);
             z-index: 9999; flex-direction: column; align-items: center; justify-content: center; padding: 20px;
         }
         .result-modal img {
-            max-width: 100%; max-height: 72vh; border-radius: 10px;
+            max-width: 100%; max-height: 66vh; border-radius: 10px;
             box-shadow: 0 4px 20px rgba(0,0,0,0.5); -webkit-touch-callout: default;
         }
         .result-tip {
-            color: #ffeb3b; font-size: 1rem; font-weight: bold; margin-bottom: 12px; text-align: center;
+            color: #ffeb3b; font-size: 0.95rem; font-weight: bold; margin-bottom: 12px; text-align: center;
         }
-        .modal-actions { display: flex; gap: 12px; margin-top: 16px; }
+        .modal-actions {
+            display: flex; flex-direction: column; gap: 10px; width: 100%; max-width: 320px; margin-top: 16px;
+        }
+        .share-line-btn {
+            background: var(--line-green); color: #ffffff; border: none; padding: 13px 20px;
+            border-radius: 24px; font-weight: bold; font-size: 1rem; cursor: pointer;
+            box-shadow: 0 4px 12px rgba(6, 199, 85, 0.35);
+        }
         .close-modal-btn {
-            background: #ffffff; color: #333333; border: none; padding: 10px 26px;
-            border-radius: 20px; font-weight: bold; font-size: 0.95rem; cursor: pointer;
+            background: rgba(255,255,255,0.2); color: #ffffff; border: 1px solid rgba(255,255,255,0.4);
+            padding: 10px 20px; border-radius: 24px; font-weight: bold; font-size: 0.92rem; cursor: pointer;
         }
     </style>
 </head>
@@ -170,14 +178,15 @@
         <div class="drag-hint" id="dragHint" style="display:none;">👆 可直接用手指拖曳移動印章</div>
     </div>
 
-    <button type="button" class="download-btn" id="downloadBtn" disabled>💾 產生完成圖（長按存相簿）</button>
+    <button type="button" class="download-btn" id="downloadBtn" disabled>💾 產生完成圖（存相簿 / 轉傳 LINE）</button>
 </div>
 
 <!-- 成品圖顯示層 -->
 <div class="result-modal" id="resultModal">
-    <div class="result-tip">👇 請直接「長按下方圖片」選「儲存影像」</div>
+    <div class="result-tip">👇 可直接「長按圖片」存相簿，或點下方轉傳</div>
     <img id="resultImg" src="" alt="成品預覽">
     <div class="modal-actions">
+        <button type="button" class="share-line-btn" id="shareLineBtn">📤 轉傳到 LINE / 系統分享</button>
         <button type="button" class="close-modal-btn" onclick="document.getElementById('resultModal').style.display='none'">關閉返回</button>
     </div>
 </div>
@@ -194,6 +203,7 @@
     const placeholderText = document.getElementById('placeholderText');
     const dragHint = document.getElementById('dragHint');
     const downloadBtn = document.getElementById('downloadBtn');
+    const shareLineBtn = document.getElementById('shareLineBtn');
 
     let currentFile = null;
     let currentImage = null;
@@ -202,6 +212,8 @@
     let stampOffset = { x: 0, y: 0 };
     let isDragging = false;
     let dragStart = { x: 0, y: 0 };
+    let generatedDataUrl = "";
+    let generatedFilename = "限用印章.jpg";
 
     function setPurpose(text) {
         purposeInput.value = text;
@@ -273,7 +285,7 @@
                     placeholderText.style.display = 'none';
                     canvas.style.display = 'block';
                     dragHint.style.display = 'block';
-                    downloadBtn.textContent = "💾 產生完成圖（長按存相簿）";
+                    downloadBtn.textContent = "💾 產生完成圖（存相簿 / 轉傳 LINE）";
                     downloadBtn.disabled = false;
                     drawImageCanvas();
                 };
@@ -358,7 +370,6 @@
 
     function drawImageCanvas() {
         if (!currentImage) return;
-        // 限制最大畫布尺寸避免 iPhone Safari 記憶體爆掉導致匯出失敗 (最大邊 2400px)
         const maxDim = 2400;
         let w = currentImage.width;
         let h = currentImage.height;
@@ -387,20 +398,53 @@
         ctx.restore();
     }
 
+    // DataURL 轉 File 物件供系統分享面板使用
+    function dataURLtoFile(dataurl, filename) {
+        const arr = dataurl.split(',');
+        const mime = arr[0].match(/:(.*?);/)[1];
+        const bstr = atob(arr[1]);
+        let n = bstr.length;
+        const u8arr = new Uint8Array(n);
+        while (n--) {
+            u8arr[n] = bstr.charCodeAt(n);
+        }
+        return new File([u8arr], filename, { type: mime });
+    }
+
+    // 點擊綠色「轉傳到 LINE / 系統分享」按鈕
+    shareLineBtn.addEventListener('click', async () => {
+        if (!generatedDataUrl) return;
+        try {
+            const fileObj = dataURLtoFile(generatedDataUrl, generatedFilename);
+            if (navigator.canShare && navigator.canShare({ files: [fileObj] })) {
+                await navigator.share({
+                    files: [fileObj],
+                    title: generatedFilename
+                });
+            } else {
+                alert("目前使用的瀏覽器（如 LINE 內建瀏覽器）不支援直接呼叫分享面板。\n\n請直接「長按上方圖片」存進相簿，或點右下角用 Safari 開啟此網頁即可直接轉傳 LINE！");
+            }
+        } catch (err) {
+            if (err.name !== 'AbortError') {
+                alert("無法開啟分享面板，請直接長按上方圖片儲存至相簿再傳送。");
+            }
+        }
+    });
+
     downloadBtn.addEventListener('click', async () => {
         if (!currentFile) return;
+        const origName = currentFile.name.replace(/\.[^/.]+$/, "");
 
         if (!isPdf) {
             try {
-                // 直接同步產生圖片並彈出成品視窗，100% 不會被 iOS 阻擋
-                const dataUrl = canvas.toDataURL('image/jpeg', 0.92);
-                document.getElementById('resultImg').src = dataUrl;
+                generatedFilename = `限用印章_${origName}.jpg`;
+                generatedDataUrl = canvas.toDataURL('image/jpeg', 0.92);
+                document.getElementById('resultImg').src = generatedDataUrl;
                 document.getElementById('resultModal').style.display = 'flex';
             } catch (err) {
                 alert("圖片產生失敗：" + err.message);
             }
         } else {
-            const origName = currentFile.name.replace(/\.[^/.]+$/, "");
             downloadBtn.disabled = true;
             downloadBtn.textContent = "⏳ 正在為 PDF 蓋章...";
             try {
@@ -433,6 +477,17 @@
                 const pdfBytes = await pdfDoc.save();
                 const filename = `限用印章_${origName}.pdf`;
                 const blob = new Blob([pdfBytes], { type: 'application/pdf' });
+                const fileObj = new File([blob], filename, { type: 'application/pdf' });
+
+                if (navigator.canShare && navigator.canShare({ files: [fileObj] })) {
+                    try {
+                        await navigator.share({ files: [fileObj], title: filename });
+                        return;
+                    } catch (err) {
+                        if (err.name === 'AbortError') return;
+                    }
+                }
+
                 const url = URL.createObjectURL(blob);
                 const a = document.createElement('a');
                 a.href = url;
