@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>證件限用章工具 (離線安全版)</title>
+    <!-- 載入 pdf-lib 與 fontkit 用於瀏覽器端直接處理 PDF (不上傳伺服器) -->
+    <script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
+    <script src="https://unpkg.com/@pdf-lib/fontkit@1.1.1/dist/fontkit.umd.min.js"></script>
+    <style>
+        :root {
+            --primary: #4A6984;
+            --bg: #f4f6f9;
+            --card: #ffffff;
+            --text: #333333;
+        }
+        * { box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, "Microsoft JhengHei", sans-serif; }
+        body {
+            margin: 0; padding: 16px; background: var(--bg); color: var(--text);
+            display: flex; flex-direction: column; align-items: center;
+        }
+        .container {
+            width: 100%; max-width: 540px; background: var(--card);
+            border-radius: 16px; padding: 20px; box-shadow: 0 4px 20px rgba(0,0,0,0.06);
+        }
+        h2 { margin: 0 0 6px 0; font-size: 1.35rem; color: var(--primary); text-align: center; }
+        .badge {
+            display: block; text-align: center; font-size: 0.8rem; color: #2e7d32;
+            background: #e8f5e9; padding: 4px 10px; border-radius: 20px; margin-bottom: 18px;
+        }
+        .form-group { margin-bottom: 14px; }
+        label { display: block; font-size: 0.9rem; font-weight: 600; margin-bottom: 6px; }
+        input[type="text"] {
+            width: 100%; padding: 12px; border: 1.5px solid #d0d7de; border-radius: 10px;
+            font-size: 1rem; outline: none; transition: border-color 0.2s;
+        }
+        input[type="text"]:focus { border-color: var(--primary); }
+        .file-btn {
+            display: block; width: 100%; padding: 14px; background: #eef3f7;
+            border: 2px dashed var(--primary); border-radius: 12px; text-align: center;
+            color: var(--primary); font-weight: bold; cursor: pointer; font-size: 1rem;
+        }
+        input[type="file"] { display: none; }
+        .controls {
+            display: grid; grid-template-columns: 1fr 1fr; gap: 12px;
+            background: #f8fafc; padding: 12px; border-radius: 10px; margin-bottom: 16px;
+        }
+        .control-item label { font-size: 0.8rem; margin-bottom: 4px; color: #555; }
+        input[type="range"] { width: 100%; accent-color: var(--primary); }
+        input[type="color"] { width: 100%; height: 34px; border: none; border-radius: 6px; cursor: pointer; }
+        .preview-box {
+            width: 100%; min-height: 240px; background: #e9ecef; border-radius: 12px;
+            display: flex; align-items: center; justify-content: center; overflow: hidden;
+            margin-bottom: 16px; position: relative; border: 1px solid #dee2e6;
+        }
+        canvas { max-width: 100%; max-height: 60vh; display: block; }
+        .placeholder { color: #6c757d; font-size: 0.9rem; text-align: center; padding: 20px; }
+        .download-btn {
+            width: 100%; padding: 15px; background: var(--primary); color: white;
+            border: none; border-radius: 12px; font-size: 1.05rem; font-weight: bold;
+            cursor: pointer; box-shadow: 0 4px 12px rgba(74, 105, 132, 0.3);
+        }
+        .download-btn:disabled { background: #adb5bd; box-shadow: none; cursor: not-allowed; }
+        .tip { font-size: 0.78rem; color: #666; text-align: center; margin-top: 10px; line-height: 1.4; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h2>🔏 證件限用章工具</h2>
+    <span class="badge">🛡️ 100% 離線本機運算・照片絕不上傳伺服器</span>
+
+    <div class="form-group">
+        <label for="purpose">1. 輸入用途（例如：辦理門號、租務、銀行開戶）</label>
+        <input type="text" id="purpose" value="辦理門號" placeholder="請輸入用途...">
+    </div>
+
+    <div class="form-group">
+        <label class="file-btn" for="fileInput">📂 2. 點此選擇照片或 PDF 檔案</label>
+        <input type="file" id="fileInput" accept="image/*,application/pdf">
+    </div>
+
+    <div class="controls">
+        <div class="control-item">
+            <label>印章大小：<span id="scaleVal">100</span>%</label>
+            <input type="range" id="scaleRange" min="50" max="180" value="100">
+        </div>
+        <div class="control-item">
+            <label>透明度：<span id="alphaVal">45</span>%</label>
+            <input type="range" id="alphaRange" min="15" max="90" value="45">
+        </div>
+        <div class="control-item">
+            <label>旋轉角度：<span id="angleVal">-20</span>°</label>
+            <input type="range" id="angleRange" min="-45" max="45" value="-20">
+        </div>
+        <div class="control-item">
+            <label>印章顏色（預設灰藍）</label>
+            <input type="color" id="colorPicker" value="#4A6984">
+        </div>
+    </div>
+
+    <div class="preview-box" id="previewBox">
+        <div class="placeholder" id="placeholderText">尚未選擇檔案<br>支援 JPG、PNG 照片及 PDF 文件</div>
+        <canvas id="canvas" style="display:none;"></canvas>
+    </div>
+
+    <button class="download-btn" id="downloadBtn" disabled>💾 儲存加上限用章的檔案</button>
+    <div class="tip">📱 iPhone 若點擊儲存後開啟圖片，長按圖片即可「加入照片」存進相簿。</div>
+</div>
+
+<script>
+    const purposeInput = document.getElementById('purpose');
+    const fileInput = document.getElementById('fileInput');
+    const scaleRange = document.getElementById('scaleRange');
+    const alphaRange = document.getElementById('alphaRange');
+    const angleRange = document.getElementById('angleRange');
+    const colorPicker = document.getElementById('colorPicker');
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    const previewBox = document.getElementById('previewBox');
+    const placeholderText = document.getElementById('placeholderText');
+    const downloadBtn = document.getElementById('downloadBtn');
+
+    let currentFile = null;
+    let currentImage = null;
+    let isPdf = false;
+    let stampOffset = { x: 0, y: 0 };
+    let isDragging = false;
+    let dragStart = { x: 0, y: 0 };
+
+    // 更新數值顯示並重繪
+    [purposeInput, scaleRange, alphaRange, angleRange, colorPicker].forEach(el => {
+        el.addEventListener('input', () => {
+            document.getElementById('scaleVal').textContent = scaleRange.value;
+            document.getElementById('alphaVal').textContent = alphaRange.value;
+            document.getElementById('angleVal').textContent = angleRange.value;
+            if (currentImage) drawImageCanvas();
+        });
+    });
+
+    // 支援手指觸控/滑鼠拖曳調整印章位置
+    canvas.addEventListener('pointerdown', e => {
+        isDragging = true;
+        const rect = canvas.getBoundingClientRect();
+        const scaleX = canvas.width / rect.width;
+        const scaleY = canvas.height / rect.height;
+        dragStart = { x: e.clientX * scaleX - stampOffset.x, y: e.clientY * scaleY - stampOffset.y };
+    });
+    window.addEventListener('pointermove', e => {
+        if (!isDragging || !currentImage) return;
+        const rect = canvas.getBoundingClientRect();
+        const scaleX = canvas.width / rect.width;
+        const scaleY = canvas.height / rect.height;
+        stampOffset.x = e.clientX * scaleX - dragStart.x;
+        stampOffset.y = e.clientY * scaleY - dragStart.y;
+        drawImageCanvas();
+    });
+    window.addEventListener('pointerup', () => { isDragging = false; });
+
+    // 讀取檔案
+    fileInput.addEventListener('change', e => {
+        const file = e.target.files[0];
+        if (!file) return;
+        currentFile = file;
+        stampOffset = { x: 0, y: 0 };
+
+        if (file.type === 'application/pdf') {
+            isPdf = true;
+            currentImage = null;
+            canvas.style.display = 'none';
+            placeholderText.style.display = 'block';
+            placeholderText.innerHTML = `📄 已載入 PDF：<b>${file.name}</b><br><br>將自動為每一頁中央蓋上限用章<br>請直接點擊下方綠色/藍色按鈕儲存`;
+            downloadBtn.disabled = false;
+        } else {
+            isPdf = false;
+            const reader = new FileReader();
+            reader.onload = ev => {
+                const img = new Image();
+                img.onload = () => {
+                    currentImage = img;
+                    placeholderText.style.display = 'none';
+                    canvas.style.display = 'block';
+                    downloadBtn.disabled = false;
+                    drawImageCanvas();
+                };
+                img.src = ev.target.result;
+            };
+            reader.readAsDataURL(file);
+        }
+    });
+
+    // 繪製圖片與印章 (完全還原 Python 邏輯)
+    function createStampCanvas(baseWidth) {
+        const purpose = purposeInput.value.trim() || "指定";
+        const topText = "本影本限";
+        const bottomText = `${purpose}用途複印無效`;
+        const scaleFactor = parseInt(scaleRange.value) / 100;
+        const alpha = parseInt(alphaRange.value) / 100;
+        const color = colorPicker.value;
+
+        const fontSize = Math.max(24, Math.floor(baseWidth * 0.035 * scaleFactor));
+        const padding = Math.floor(fontSize * 0.4);
+        const charH = fontSize * 1.15;
+        const totalChars = topText.length + bottomText.length;
+
+        const stampW = Math.floor(fontSize * 1.6);
+        const stampH = Math.floor(totalChars * charH + fontSize * 1.5 + padding * 2);
+
+        const sCanvas = document.createElement('canvas');
+        sCanvas.width = stampW;
+        sCanvas.height = stampH;
+        const sCtx = sCanvas.getContext('2d');
+
+        sCtx.globalAlpha = alpha;
+        sCtx.strokeStyle = color;
+        sCtx.fillStyle = color;
+        sCtx.lineWidth = Math.max(2, fontSize * 0.08);
+
+        // 外框
+        sCtx.strokeRect(1, 1, stampW - 2, stampH - 2);
+
+        // 書法感字體 (優先使用標楷體/宋體)
+        sCtx.font = `bold ${fontSize}px "BiauKai", "DFKai-SB", "KaiTi", "STKaiti", serif`;
+        sCtx.textAlign = "center";
+        sCtx.textBaseline = "top";
+
+        let yCursor = padding;
+        for (const char of topText) {
+            sCtx.fillText(char, stampW / 2, yCursor);
+            yCursor += charH;
+        }
+
+        yCursor += fontSize * 1.2;
+
+        for (const char of bottomText) {
+            sCtx.fillText(char, stampW / 2, yCursor);
+            yCursor += charH;
+        }
+
+        return sCanvas;
+    }
+
+    function drawImageCanvas() {
+        if (!currentImage) return;
+        canvas.width = currentImage.width;
+        canvas.height = currentImage.height;
+
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.drawImage(currentImage, 0, 0);
+
+        const stampCanvas = createStampCanvas(canvas.width);
+        const angleRad = parseInt(angleRange.value) * Math.PI / 180;
+
+        ctx.save();
+        ctx.translate(canvas.width / 2 + stampOffset.x, canvas.height / 2 + stampOffset.y);
+        ctx.rotate(angleRad);
+        ctx.drawImage(stampCanvas, -stampCanvas.width / 2, -stampCanvas.height / 2);
+        ctx.restore();
+    }
+
+    // 下載處理
+    downloadBtn.addEventListener('click', async () => {
+        if (!currentFile) return;
+        const origName = currentFile.name.replace(/\.[^/.]+$/, "");
+
+        if (!isPdf) {
+            // 圖片直接匯出
+            const mime = currentFile.type === 'image/png' ? 'image/png' : 'image/jpeg';
+            const ext = mime === 'image/png' ? 'png' : 'jpg';
+            canvas.toBlob(blob => {
+                triggerDownload(blob, `限用印章_${origName}.${ext}`);
+            }, mime, 0.92);
+        } else {
+            // PDF 處理：將印章轉為高解析透明 PNG 嵌入每一頁
+            downloadBtn.disabled = true;
+            downloadBtn.textContent = "⏳ 正在為 PDF 蓋章...";
+            try {
+                const arrayBuffer = await currentFile.arrayBuffer();
+                const pdfDoc = await PDFLib.PDFDocument.load(arrayBuffer);
+                const pages = pdfDoc.getPages();
+
+                for (const page of pages) {
+                    const { width, height } = page.getSize();
+                    const stampCanvas = createStampCanvas(width * 2); // 2倍解析度確保清晰
+                    const pngDataUrl = stampCanvas.toDataURL('image/png');
+                    const pngImage = await pdfDoc.embedPng(pngDataUrl);
+
+                    const drawW = stampCanvas.width / 2;
+                    const drawH = stampCanvas.height / 2;
+                    const angleDeg = -parseInt(angleRange.value); // pdf-lib 逆時針為正
+                    const rad = angleDeg * Math.PI / 180;
+
+                    // 計算旋轉後的中心對齊座標
+                    const cx = width / 2;
+                    const cy = height / 2;
+                    const x = cx - (drawW / 2) * Math.cos(rad) + (drawH / 2) * Math.sin(rad);
+                    const y = cy - (drawW / 2) * Math.sin(rad) - (drawH / 2) * Math.cos(rad);
+
+                    page.drawImage(pngImage, {
+                        x: x,
+                        y: y,
+                        width: drawW,
+                        height: drawH,
+                        rotate: PDFLib.degrees(angleDeg),
+                    });
+                }
+
+                const pdfBytes = await pdfDoc.save();
+                const blob = new Blob([pdfBytes], { type: 'application/pdf' });
+                triggerDownload(blob, `限用印章_${origName}.pdf`);
+            } catch (err) {
+                alert("PDF 處理失敗：" + err.message);
+            } finally {
+                downloadBtn.disabled = false;
+                downloadBtn.textContent = "💾 儲存加上限用章的檔案";
+            }
+        }
+    });
+
+    function triggerDownload(blob, filename) {
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        setTimeout(() => URL.revokeObjectURL(url), 5000);
+    }
+</script>
+
+</body>
+</html>
