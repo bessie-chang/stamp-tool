@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>證件限用章工具 (iOS 穩定版)</title>
+    <title>證件限用章工具 (全平台通用版)</title>
     <script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
     <style>
         :root {
@@ -101,11 +101,11 @@
             z-index: 9999; flex-direction: column; align-items: center; justify-content: center; padding: 20px;
         }
         .result-modal img {
-            max-width: 100%; max-height: 66vh; border-radius: 10px;
+            max-width: 100%; max-height: 60vh; border-radius: 10px;
             box-shadow: 0 4px 20px rgba(0,0,0,0.5); -webkit-touch-callout: default;
         }
         .result-tip {
-            color: #ffeb3b; font-size: 0.95rem; font-weight: bold; margin-bottom: 12px; text-align: center;
+            color: #ffeb3b; font-size: 0.92rem; font-weight: bold; margin-bottom: 12px; text-align: center;
         }
         .modal-actions {
             display: flex; flex-direction: column; gap: 10px; width: 100%; max-width: 320px; margin-top: 16px;
@@ -114,6 +114,11 @@
             background: var(--line-green); color: #ffffff; border: none; padding: 13px 20px;
             border-radius: 24px; font-weight: bold; font-size: 1rem; cursor: pointer;
             box-shadow: 0 4px 12px rgba(6, 199, 85, 0.35);
+        }
+        .direct-save-btn {
+            background: #2b7de9; color: #ffffff; border: none; padding: 12px 20px;
+            border-radius: 24px; font-weight: bold; font-size: 0.96rem; cursor: pointer;
+            box-shadow: 0 4px 12px rgba(43, 125, 233, 0.35);
         }
         .close-modal-btn {
             background: rgba(255,255,255,0.2); color: #ffffff; border: 1px solid rgba(255,255,255,0.4);
@@ -175,7 +180,7 @@
     <div class="preview-box" id="previewBox">
         <div class="placeholder" id="placeholderText">尚未選擇檔案<br>支援手機相簿照片及 PDF 文件</div>
         <canvas id="canvas" style="display:none;"></canvas>
-        <div class="drag-hint" id="dragHint" style="display:none;">👆 可直接用手指拖曳移動印章</div>
+        <div class="drag-hint" id="dragHint" style="display:none;">👆 可直接用手指或滑鼠拖曳印章</div>
     </div>
 
     <button type="button" class="download-btn" id="downloadBtn" disabled>💾 產生完成圖（存相簿 / 轉傳 LINE）</button>
@@ -183,10 +188,11 @@
 
 <!-- 成品圖顯示層 -->
 <div class="result-modal" id="resultModal">
-    <div class="result-tip">👇 可直接「長按圖片」存相簿，或點下方轉傳</div>
+    <div class="result-tip">👇 iPhone 可「長按圖片」存相簿，Android / 電腦可直接下載</div>
     <img id="resultImg" src="" alt="成品預覽">
     <div class="modal-actions">
         <button type="button" class="share-line-btn" id="shareLineBtn">📤 轉傳到 LINE / 系統分享</button>
+        <button type="button" class="direct-save-btn" id="directSaveBtn">⬇️ 直接下載圖片 (Android / 電腦)</button>
         <button type="button" class="close-modal-btn" onclick="document.getElementById('resultModal').style.display='none'">關閉返回</button>
     </div>
 </div>
@@ -204,6 +210,7 @@
     const dragHint = document.getElementById('dragHint');
     const downloadBtn = document.getElementById('downloadBtn');
     const shareLineBtn = document.getElementById('shareLineBtn');
+    const directSaveBtn = document.getElementById('directSaveBtn');
 
     let currentFile = null;
     let currentImage = null;
@@ -422,13 +429,24 @@
                     title: generatedFilename
                 });
             } else {
-                alert("目前使用的瀏覽器（如 LINE 內建瀏覽器）不支援直接呼叫分享面板。\n\n請直接「長按上方圖片」存進相簿，或點右下角用 Safari 開啟此網頁即可直接轉傳 LINE！");
+                alert("目前使用的瀏覽器（如 LINE 內建瀏覽器）不支援直接呼叫分享面板。\n\n請直接「長按上方圖片」存進相簿，或改用 Safari / Chrome 開啟此網頁即可直接轉傳 LINE！");
             }
         } catch (err) {
             if (err.name !== 'AbortError') {
                 alert("無法開啟分享面板，請直接長按上方圖片儲存至相簿再傳送。");
             }
         }
+    });
+
+    // 點擊藍色「直接下載圖片」按鈕（適用於 Android / 電腦版瀏覽器）
+    directSaveBtn.addEventListener('click', () => {
+        if (!generatedDataUrl) return;
+        const a = document.createElement('a');
+        a.href = generatedDataUrl;
+        a.download = generatedFilename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
     });
 
     downloadBtn.addEventListener('click', async () => {
