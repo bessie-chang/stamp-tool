@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>證件限用章工具 (離線安全升級版)</title>
+    <title>證件限用章工具 (iOS 穩定版)</title>
     <script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
     <style>
         :root {
@@ -90,22 +90,25 @@
             width: 100%; padding: 14px; background: var(--primary); color: white;
             border: none; border-radius: 12px; font-size: 1.02rem; font-weight: bold;
             cursor: pointer; box-shadow: 0 4px 12px rgba(74, 105, 132, 0.3);
+            -webkit-appearance: none;
         }
         .download-btn:disabled { background: #adb5bd; box-shadow: none; cursor: not-allowed; }
         
-        /* iOS 成品圖彈窗（防外部 App 警告） */
+        /* 成品圖彈窗：100% 相容 iPhone Safari 與 LINE 瀏覽器長按存圖 */
         .result-modal {
-            display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.82);
-            z-index: 999; flex-direction: column; align-items: center; justify-content: center; padding: 20px;
+            display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.88);
+            z-index: 9999; flex-direction: column; align-items: center; justify-content: center; padding: 20px;
         }
         .result-modal img {
-            max-width: 100%; max-height: 75vh; border-radius: 10px; box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+            max-width: 100%; max-height: 72vh; border-radius: 10px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.5); -webkit-touch-callout: default;
         }
         .result-tip {
-            color: #fff; font-size: 0.95rem; font-weight: bold; margin: 14px 0; text-align: center;
+            color: #ffeb3b; font-size: 1rem; font-weight: bold; margin-bottom: 12px; text-align: center;
         }
+        .modal-actions { display: flex; gap: 12px; margin-top: 16px; }
         .close-modal-btn {
-            background: #fff; color: #333; border: none; padding: 10px 28px;
+            background: #ffffff; color: #333333; border: none; padding: 10px 26px;
             border-radius: 20px; font-weight: bold; font-size: 0.95rem; cursor: pointer;
         }
     </style>
@@ -167,15 +170,16 @@
         <div class="drag-hint" id="dragHint" style="display:none;">👆 可直接用手指拖曳移動印章</div>
     </div>
 
-    <button class="download-btn" id="downloadBtn" disabled>💾 儲存 / 分享加上限用章的檔案</button>
+    <button type="button" class="download-btn" id="downloadBtn" disabled>💾 產生完成圖（長按存相簿）</button>
 </div>
 
-<!-- 成品圖顯示層 (長按直接存相簿，不跳系統外部 App 警告) -->
+<!-- 成品圖顯示層 -->
 <div class="result-modal" id="resultModal">
-    <div class="result-tip">👆 請直接「長按下方圖片」選擇「儲存影像」</div>
+    <div class="result-tip">👇 請直接「長按下方圖片」選「儲存影像」</div>
     <img id="resultImg" src="" alt="成品預覽">
-    <br>
-    <button class="close-modal-btn" onclick="document.getElementById('resultModal').style.display='none'">關閉返回</button>
+    <div class="modal-actions">
+        <button type="button" class="close-modal-btn" onclick="document.getElementById('resultModal').style.display='none'">關閉返回</button>
+    </div>
 </div>
 
 <script>
@@ -256,7 +260,8 @@
             canvas.style.display = 'none';
             dragHint.style.display = 'none';
             placeholderText.style.display = 'block';
-            placeholderText.innerHTML = `📄 已載入 PDF：<b>${file.name}</b><br><br>將自動為每一頁中央蓋上限用章<br>請直接點擊下方按鈕儲存`;
+            placeholderText.innerHTML = `📄 已載入 PDF：<b>${file.name}</b><br><br>將自動為每一頁中央蓋上限用章<br>請點擊下方按鈕產生檔案`;
+            downloadBtn.textContent = "💾 下載加上限用章的 PDF";
             downloadBtn.disabled = false;
         } else {
             isPdf = false;
@@ -268,6 +273,7 @@
                     placeholderText.style.display = 'none';
                     canvas.style.display = 'block';
                     dragHint.style.display = 'block';
+                    downloadBtn.textContent = "💾 產生完成圖（長按存相簿）";
                     downloadBtn.disabled = false;
                     drawImageCanvas();
                 };
@@ -352,11 +358,24 @@
 
     function drawImageCanvas() {
         if (!currentImage) return;
-        canvas.width = currentImage.width;
-        canvas.height = currentImage.height;
+        // 限制最大畫布尺寸避免 iPhone Safari 記憶體爆掉導致匯出失敗 (最大邊 2400px)
+        const maxDim = 2400;
+        let w = currentImage.width;
+        let h = currentImage.height;
+        if (w > maxDim || h > maxDim) {
+            if (w > h) {
+                h = Math.round(h * (maxDim / w));
+                w = maxDim;
+            } else {
+                w = Math.round(w * (maxDim / h));
+                h = maxDim;
+            }
+        }
+        canvas.width = w;
+        canvas.height = h;
 
         ctx.clearRect(0, 0, canvas.width, canvas.height);
-        ctx.drawImage(currentImage, 0, 0);
+        ctx.drawImage(currentImage, 0, 0, w, h);
 
         const stampCanvas = createStampCanvas(canvas.width);
         const angleRad = parseInt(angleRange.value) * Math.PI / 180;
@@ -370,29 +389,18 @@
 
     downloadBtn.addEventListener('click', async () => {
         if (!currentFile) return;
-        const origName = currentFile.name.replace(/\.[^/.]+$/, "");
 
         if (!isPdf) {
-            const mime = currentFile.type === 'image/png' ? 'image/png' : 'image/jpeg';
-            const ext = mime === 'image/png' ? 'png' : 'jpg';
-            const filename = `限用印章_${origName}.${ext}`;
-
-            canvas.toBlob(async blob => {
-                const fileObj = new File([blob], filename, { type: mime });
-                // 1. 優先呼叫 iPhone/Android 原生分享選單 (可直接「儲存影像」進相簿或傳 LINE)
-                if (navigator.canShare && navigator.canShare({ files: [fileObj] })) {
-                    try {
-                        await navigator.share({ files: [fileObj], title: filename });
-                        return;
-                    } catch (err) {
-                        if (err.name === 'AbortError') return; // 使用者自行取消分享
-                    }
-                }
-                // 2. 若瀏覽器不支援原生分享，則在當前頁面彈出成品圖供直接長按儲存，避免跳出外部 App 警告
-                document.getElementById('resultImg').src = canvas.toDataURL(mime, 0.92);
+            try {
+                // 直接同步產生圖片並彈出成品視窗，100% 不會被 iOS 阻擋
+                const dataUrl = canvas.toDataURL('image/jpeg', 0.92);
+                document.getElementById('resultImg').src = dataUrl;
                 document.getElementById('resultModal').style.display = 'flex';
-            }, mime, 0.92);
+            } catch (err) {
+                alert("圖片產生失敗：" + err.message);
+            }
         } else {
+            const origName = currentFile.name.replace(/\.[^/.]+$/, "");
             downloadBtn.disabled = true;
             downloadBtn.textContent = "⏳ 正在為 PDF 蓋章...";
             try {
@@ -425,16 +433,6 @@
                 const pdfBytes = await pdfDoc.save();
                 const filename = `限用印章_${origName}.pdf`;
                 const blob = new Blob([pdfBytes], { type: 'application/pdf' });
-                const fileObj = new File([blob], filename, { type: 'application/pdf' });
-
-                if (navigator.canShare && navigator.canShare({ files: [fileObj] })) {
-                    try {
-                        await navigator.share({ files: [fileObj], title: filename });
-                        return;
-                    } catch (err) {
-                        if (err.name === 'AbortError') return;
-                    }
-                }
                 const url = URL.createObjectURL(blob);
                 const a = document.createElement('a');
                 a.href = url;
@@ -447,7 +445,7 @@
                 alert("PDF 處理失敗：" + err.message);
             } finally {
                 downloadBtn.disabled = false;
-                downloadBtn.textContent = "💾 儲存 / 分享加上限用章的檔案";
+                downloadBtn.textContent = "💾 下載加上限用章的 PDF";
             }
         }
     });
