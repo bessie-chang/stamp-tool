@@ -33,25 +33,18 @@
             font-size: 1rem; outline: none; transition: border-color 0.2s;
         }
         input[type="text"]:focus { border-color: var(--primary); }
-        
-        /* 常用用途快選標籤 */
-        .quick-tags {
-            display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px;
-        }
+        .quick-tags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
         .tag-btn {
             background: #eef3f7; color: var(--primary); border: 1px solid #cbd8e3;
             border-radius: 16px; padding: 4px 11px; font-size: 0.8rem; cursor: pointer;
         }
         .tag-btn:active { background: var(--primary); color: #fff; }
-
         .file-btn {
             display: block; width: 100%; padding: 13px; background: #eef3f7;
             border: 2px dashed var(--primary); border-radius: 12px; text-align: center;
             color: var(--primary); font-weight: bold; cursor: pointer; font-size: 0.98rem;
         }
         input[type="file"] { display: none; }
-
-        /* 直式/橫式切換與顏色快選列 */
         .mode-row {
             display: flex; justify-content: space-between; align-items: center;
             gap: 10px; margin-bottom: 12px;
@@ -71,23 +64,18 @@
             width: 26px; height: 26px; border-radius: 50%; border: 2px solid #fff;
             box-shadow: 0 0 0 1.5px #ccc; cursor: pointer;
         }
-        input[type="color"] {
-            width: 28px; height: 28px; border: none; padding: 0; background: none; cursor: pointer;
-        }
-
+        input[type="color"] { width: 28px; height: 28px; border: none; padding: 0; background: none; cursor: pointer; }
         .controls {
             display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px;
             background: #f8fafc; padding: 10px; border-radius: 10px; margin-bottom: 14px;
         }
         .control-item label { font-size: 0.76rem; margin-bottom: 4px; color: #555; text-align: center; }
         input[type="range"] { width: 100%; accent-color: var(--primary); }
-
         .preview-box {
             width: 100%; min-height: 230px; background: #e9ecef; border-radius: 12px;
             display: flex; align-items: center; justify-content: center; overflow: hidden;
             margin-bottom: 14px; position: relative; border: 1px solid #dee2e6;
         }
-        /* 關鍵修正：鎖定畫布觸控捲動，手指拖曳印章時畫面不再跟著上下跑 */
         canvas {
             max-width: 100%; max-height: 58vh; display: block;
             touch-action: none; cursor: grab;
@@ -98,14 +86,28 @@
             position: absolute; bottom: 8px; right: 8px; background: rgba(0,0,0,0.55);
             color: #fff; font-size: 0.72rem; padding: 3px 8px; border-radius: 12px; pointer-events: none;
         }
-
         .download-btn {
             width: 100%; padding: 14px; background: var(--primary); color: white;
             border: none; border-radius: 12px; font-size: 1.02rem; font-weight: bold;
             cursor: pointer; box-shadow: 0 4px 12px rgba(74, 105, 132, 0.3);
         }
         .download-btn:disabled { background: #adb5bd; box-shadow: none; cursor: not-allowed; }
-        .tip { font-size: 0.76rem; color: #666; text-align: center; margin-top: 8px; line-height: 1.4; }
+        
+        /* iOS 成品圖彈窗（防外部 App 警告） */
+        .result-modal {
+            display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.82);
+            z-index: 999; flex-direction: column; align-items: center; justify-content: center; padding: 20px;
+        }
+        .result-modal img {
+            max-width: 100%; max-height: 75vh; border-radius: 10px; box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+        }
+        .result-tip {
+            color: #fff; font-size: 0.95rem; font-weight: bold; margin: 14px 0; text-align: center;
+        }
+        .close-modal-btn {
+            background: #fff; color: #333; border: none; padding: 10px 28px;
+            border-radius: 20px; font-weight: bold; font-size: 0.95rem; cursor: pointer;
+        }
     </style>
 </head>
 <body>
@@ -165,8 +167,15 @@
         <div class="drag-hint" id="dragHint" style="display:none;">👆 可直接用手指拖曳移動印章</div>
     </div>
 
-    <button class="download-btn" id="downloadBtn" disabled>💾 儲存加上限用章的檔案</button>
-    <div class="tip">📱 iPhone 點擊儲存後若開啟圖片，長按圖片即可「加入照片」存進相簿。</div>
+    <button class="download-btn" id="downloadBtn" disabled>💾 儲存 / 分享加上限用章的檔案</button>
+</div>
+
+<!-- 成品圖顯示層 (長按直接存相簿，不跳系統外部 App 警告) -->
+<div class="result-modal" id="resultModal">
+    <div class="result-tip">👆 請直接「長按下方圖片」選擇「儲存影像」</div>
+    <img id="resultImg" src="" alt="成品預覽">
+    <br>
+    <button class="close-modal-btn" onclick="document.getElementById('resultModal').style.display='none'">關閉返回</button>
 </div>
 
 <script>
@@ -185,7 +194,7 @@
     let currentFile = null;
     let currentImage = null;
     let isPdf = false;
-    let orientation = 'vertical'; // 'vertical' 或 'horizontal'
+    let orientation = 'vertical';
     let stampOffset = { x: 0, y: 0 };
     let isDragging = false;
     let dragStart = { x: 0, y: 0 };
@@ -216,7 +225,6 @@
         });
     });
 
-    // 手指拖曳移動印章位置 (已搭配 CSS touch-action: none 防止畫面亂滑)
     canvas.addEventListener('pointerdown', e => {
         e.preventDefault();
         isDragging = true;
@@ -269,7 +277,6 @@
         }
     });
 
-    // 繪製直式或橫式印章
     function createStampCanvas(baseWidth) {
         const purpose = purposeInput.value.trim() || "指定";
         const topText = "本影本限";
@@ -287,7 +294,6 @@
         sCtx.font = fontStr;
 
         if (orientation === 'vertical') {
-            // 直式印章
             const charH = fontSize * 1.15;
             const totalChars = topText.length + bottomText.length;
             const stampW = Math.floor(fontSize * 1.6);
@@ -317,7 +323,6 @@
                 yCursor += charH;
             }
         } else {
-            // 橫式印章 (兩行置中排版，適合字數多時使用)
             const line1 = topText;
             const line2 = bottomText;
             const textW = Math.max(sCtx.measureText(line1).width, sCtx.measureText(line2).width);
@@ -370,8 +375,22 @@
         if (!isPdf) {
             const mime = currentFile.type === 'image/png' ? 'image/png' : 'image/jpeg';
             const ext = mime === 'image/png' ? 'png' : 'jpg';
-            canvas.toBlob(blob => {
-                triggerDownload(blob, `限用印章_${origName}.${ext}`);
+            const filename = `限用印章_${origName}.${ext}`;
+
+            canvas.toBlob(async blob => {
+                const fileObj = new File([blob], filename, { type: mime });
+                // 1. 優先呼叫 iPhone/Android 原生分享選單 (可直接「儲存影像」進相簿或傳 LINE)
+                if (navigator.canShare && navigator.canShare({ files: [fileObj] })) {
+                    try {
+                        await navigator.share({ files: [fileObj], title: filename });
+                        return;
+                    } catch (err) {
+                        if (err.name === 'AbortError') return; // 使用者自行取消分享
+                    }
+                }
+                // 2. 若瀏覽器不支援原生分享，則在當前頁面彈出成品圖供直接長按儲存，避免跳出外部 App 警告
+                document.getElementById('resultImg').src = canvas.toDataURL(mime, 0.92);
+                document.getElementById('resultModal').style.display = 'flex';
             }, mime, 0.92);
         } else {
             downloadBtn.disabled = true;
@@ -404,27 +423,34 @@
                 }
 
                 const pdfBytes = await pdfDoc.save();
+                const filename = `限用印章_${origName}.pdf`;
                 const blob = new Blob([pdfBytes], { type: 'application/pdf' });
-                triggerDownload(blob, `限用印章_${origName}.pdf`);
+                const fileObj = new File([blob], filename, { type: 'application/pdf' });
+
+                if (navigator.canShare && navigator.canShare({ files: [fileObj] })) {
+                    try {
+                        await navigator.share({ files: [fileObj], title: filename });
+                        return;
+                    } catch (err) {
+                        if (err.name === 'AbortError') return;
+                    }
+                }
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = filename;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                setTimeout(() => URL.revokeObjectURL(url), 5000);
             } catch (err) {
                 alert("PDF 處理失敗：" + err.message);
             } finally {
                 downloadBtn.disabled = false;
-                downloadBtn.textContent = "💾 儲存加上限用章的檔案";
+                downloadBtn.textContent = "💾 儲存 / 分享加上限用章的檔案";
             }
         }
     });
-
-    function triggerDownload(blob, filename) {
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = filename;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        setTimeout(() => URL.revokeObjectURL(url), 5000);
-    }
 </script>
 
 </body>
